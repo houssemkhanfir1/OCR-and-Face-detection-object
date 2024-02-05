@@ -1,0 +1,94 @@
+#Importing all the necessery libraries
+import zipfile
+from PIL import Image
+from PIL import ImageDraw
+from IPython.display import display 
+import pytesseract
+import kraken
+from kraken import pageseg
+import cv2 as cv
+import numpy as np
+import io 
+from io import BytesIO
+import os
+import shutil
+# loading the face detection classifier
+face_cascade = cv.CascadeClassifier('readonly/haarcascade_frontalface_default.xml')
+
+#Fetching data using the tesseract class 
+def fetching_data_with_tesseract(image_to_fetch):
+    def binarize(image_to_process,threshold):
+        output_image=image_to_process.convert("L")
+        for x in range(output_image.width):
+            for y in range(output_image.height):
+                if output_image.getpixel((x,y))<threshold:
+                    output_image.putpixel((x,y),0)
+                else:
+                    output_image.putpixel((x,y),1)
+        return output_image
+    for thres in range(0,256,64):
+        output_image=binarize(image_to_fetch,thres)
+        text_to_fetch=pytesseract.image_to_string(output_image)
+        if "Christopher" in text_to_fetch:
+              return True
+    return False
+    
+#finding faces and adjusting it on the image :
+def extracting_faces_from_image(image_to_fetch,new_path):
+    open_cv_version=image_to_fetch.convert("L")
+    open_cv_version.save(new_path)
+    cv_image=cv.imread(new_path)
+    def extract_faces(image_to_fetch):
+        faces=face_cascade.detectMultiScale(cv_image,1.35,4)    
+        list_of_faces=faces.tolist()
+        return list_of_faces
+    list_of_bounding_boxes=extract_faces(cv_image)
+    list_of_boxs_of_faces=[]
+    for box in list_of_bounding_boxes:
+        box=[box[0],box[1],box[0]+box[2],box[1]+box[3]]
+        list_of_boxs_of_faces.append(box)
+    return list_of_boxs_of_faces       
+#Creting the faces_sheet
+
+def creating_contact_sheet(pil_image,list_of_faces):
+    white_sheet=Image.new(mode="RGB",size=(550,110*int(np.ceil(len(list_of_faces)/5))))
+    x=0
+    y=0
+    for face in list_of_faces:
+        image=pil_image.crop(face)
+        image.thumbnail((110,110))
+        white_sheet.paste(image,(x,y))
+        if x+image.width==white_sheet.width:
+            x=0
+            y+=image.height
+        else:
+            x+=image.width
+    white_sheet=white_sheet.resize((int(white_sheet.width/2),int(white_sheet.height/2)),Image.BICUBIC)
+    return white_sheet
+
+# Main program
+with zipfile.ZipFile('small_img.zip','r') as zip_file:
+    zip_file.extractall("extracted_images")
+list_of_images=zip_file.namelist()
+list_of_paths=[]
+for name_of_image in list_of_images:
+    image_path="extracted_images/{}".format(name_of_image)
+    list_of_paths.append(image_path)
+list_of_new_paths=[]
+i=11
+for name_of_image in list_of_images:
+    new_path="extracted_images/a{}.png".format(i)
+    i+=1
+    list_of_new_paths.append(new_path)
+all_paths=zip(list_of_paths,list_of_new_paths)
+for old_path,new_path in all_paths:
+    pil_image=Image.open(old_path)
+    result=fetching_data_with_tesseract(pil_image)
+    if result== True:
+        print("Result found in the file {}").format(image_path[17:])
+        result_list=extracting_faces_from_image(pil_image,new_path)
+        if len(result_list)!=0:
+            result_image=creating_contact_sheet(pil_image,result_list)
+            display(result_image)
+        else:
+            print("But there were no faces in that file!")
